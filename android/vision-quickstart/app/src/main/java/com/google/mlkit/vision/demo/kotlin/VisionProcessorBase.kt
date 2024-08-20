@@ -347,6 +347,7 @@ abstract class VisionProcessorBase<T>(context: Context) : VisionImageProcessor {
               InferenceInfoGraphic(
                 graphicOverlay,
                 currentFrameLatencyMs,
+                false,
                 currentDetectorLatencyMs,
                 if (shouldShowFps) framesPerSecond else null
               )

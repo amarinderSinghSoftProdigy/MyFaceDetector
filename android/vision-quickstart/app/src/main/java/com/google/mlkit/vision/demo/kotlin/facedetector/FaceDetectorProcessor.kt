@@ -18,6 +18,7 @@ package com.google.mlkit.vision.demo.kotlin.facedetector
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.demo.GraphicOverlay
@@ -30,7 +31,7 @@ import com.google.mlkit.vision.face.FaceLandmark
 import java.util.Locale
 
 /** Face Detector Demo.  */
-class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptions?) :
+class FaceDetectorProcessor(val context: Context, detectorOptions: FaceDetectorOptions?) :
   VisionProcessorBase<List<Face>>(context) {
 
   private val detector: FaceDetector
@@ -43,7 +44,6 @@ class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptio
         .build()
 
     detector = FaceDetection.getClient(options)
-
     Log.v(MANUAL_TESTING_LOG, "Face detector options: $options")
   }
 
@@ -59,7 +59,7 @@ class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptio
   override fun onSuccess(faces: List<Face>, graphicOverlay: GraphicOverlay) {
     for (face in faces) {
       graphicOverlay.add(FaceGraphic(graphicOverlay, face))
-      logExtrasForTesting(face)
+      logExtrasForTesting(face, context)
     }
   }
 
@@ -69,7 +69,7 @@ class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptio
 
   companion object {
     private const val TAG = "FaceDetectorProcessor"
-    private fun logExtrasForTesting(face: Face?) {
+    private fun logExtrasForTesting(face: Face?, context: Context) {
       if (face != null) {
         Log.v(
           MANUAL_TESTING_LOG,
@@ -112,6 +112,7 @@ class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptio
           "LEFT_CHEEK",
           "NOSE_BASE"
         )
+
         for (i in landMarkTypes.indices) {
           val landmark = face.getLandmark(landMarkTypes[i])
           if (landmark == null) {
@@ -120,6 +121,7 @@ class FaceDetectorProcessor(context: Context, detectorOptions: FaceDetectorOptio
               "No landmark of type: " + landMarkTypesStrings[i] + " has been detected"
             )
           } else {
+            Toast.makeText(context, "Found values for face aspects", Toast.LENGTH_SHORT).show()
             val landmarkPosition = landmark.position
             val landmarkPositionStr =
               String.format(Locale.US, "x: %f , y: %f", landmarkPosition.x, landmarkPosition.y)
