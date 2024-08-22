@@ -143,7 +143,7 @@ class FaceGraphic constructor(overlay: GraphicOverlay?, private val face: Face) 
     )
     yLabelOffset += ID_TEXT_SIZE
 
-    //canvas.drawRect(left, top, right, bottom, boxPaints[colorID])
+    canvas.drawRect(left, top, right, bottom, boxPaints[colorID])
     if (face.trackingId != null) {
       canvas.drawText("ID: " + face.trackingId, left, top + yLabelOffset, idPaints[colorID])
       yLabelOffset += lineHeight

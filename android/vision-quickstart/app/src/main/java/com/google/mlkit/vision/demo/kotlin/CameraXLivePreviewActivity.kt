@@ -1,24 +1,12 @@
-/*
- * Copyright 2020 Google LLC. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.mlkit.vision.demo.kotlin
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build.VERSION_CODES
 import android.os.Bundle
+import android.os.FileUtils
 import android.util.Log
 import android.view.View
 import android.widget.AdapterView
@@ -39,31 +27,24 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.common.annotation.KeepName
 import com.google.mlkit.common.MlKitException
-import com.google.mlkit.common.model.LocalModel
-import com.google.mlkit.vision.barcode.ZoomSuggestionOptions.ZoomCallback
+import com.google.mlkit.vision.demo.BitmapUtils
 import com.google.mlkit.vision.demo.CameraXViewModel
+import com.google.mlkit.vision.demo.FileUtility
 import com.google.mlkit.vision.demo.GraphicOverlay
 import com.google.mlkit.vision.demo.R
 import com.google.mlkit.vision.demo.VisionImageProcessor
 import com.google.mlkit.vision.demo.kotlin.facedetector.FaceDetectorProcessor
-import com.google.mlkit.vision.demo.kotlin.facemeshdetector.FaceMeshDetectorProcessor
 import com.google.mlkit.vision.demo.preference.PreferenceUtils
 import com.google.mlkit.vision.demo.preference.SettingsActivity
 import com.google.mlkit.vision.demo.preference.SettingsActivity.LaunchSource
-import com.google.mlkit.vision.label.custom.CustomImageLabelerOptions
-import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
-import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
-/** Live preview demo app for1`` ML Kit APIs using CameraX. */
+
 @KeepName
 @RequiresApi(VERSION_CODES.LOLLIPOP)
 class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
@@ -84,6 +65,9 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
+        if (!allRuntimePermissionsGranted()) {
+            getRuntimePermissions()
+        }
         if (savedInstanceState != null) {
             selectedModel = savedInstanceState.getString(STATE_SELECTED_MODEL, FACE_DETECTION)
         }
@@ -97,11 +81,9 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
         if (graphicOverlay == null) {
             Log.d(TAG, "graphicOverlay is null")
         }
-        val spinner = findViewById<Spinner>(R.id.spinner)
+        /*val spinner = findViewById<Spinner>(R.id.spinner)
         val options: MutableList<String> = ArrayList()
         options.add(FACE_DETECTION)
-        options.add(FACE_MESH_DETECTION)
-        options.add(FACE_SAVE_IMAGE)
 
         // Creating adapter for spinner
         val dataAdapter = ArrayAdapter(this, R.layout.spinner_style, options)
@@ -111,7 +93,7 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
         spinner.adapter = dataAdapter
         spinner.onItemSelectedListener = this
         val facingSwitch = findViewById<ToggleButton>(R.id.facing_switch)
-        facingSwitch.setOnCheckedChangeListener(this)
+        facingSwitch.setOnCheckedChangeListener(this)*/
         ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory.getInstance(application))
             .get(CameraXViewModel::class.java)
             .processCameraProvider
@@ -129,6 +111,50 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
             intent.putExtra(SettingsActivity.EXTRA_LAUNCH_SOURCE, LaunchSource.CAMERAX_LIVE_PREVIEW)
             startActivity(intent)
         }
+    }
+
+    private fun allRuntimePermissionsGranted(): Boolean {
+        for (permission in REQUIRED_RUNTIME_PERMISSIONS) {
+            permission?.let {
+                if (!isPermissionGranted(this, it)) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    private fun getRuntimePermissions() {
+        val permissionsToRequest = ArrayList<String>()
+        for (permission in REQUIRED_RUNTIME_PERMISSIONS) {
+            permission?.let {
+                if (!isPermissionGranted(this, it)) {
+                    permissionsToRequest.add(permission)
+                }
+            }
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                PERMISSION_REQUESTS
+            )
+        }
+    }
+
+    private fun isPermissionGranted(context: Context, permission: String): Boolean {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                permission
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.i(TAG, "Permission granted: $permission")
+
+            return true
+        }
+        Log.i(TAG, "Permission NOT granted: $permission")
+        return false
     }
 
     override fun onSaveInstanceState(bundle: Bundle) {
@@ -224,7 +250,9 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
         camera = cameraProvider!!.bindToLifecycle(this, cameraSelector!!, previewUseCase)
     }
 
+    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     private fun bindAnalysisUseCase() {
+        var savedImage = true
         if (cameraProvider == null) {
             return
         }
@@ -240,15 +268,9 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
                     FACE_DETECTION -> {
                         Log.i(TAG, "Using Face Detector Processor")
                         val faceDetectorOptions = PreferenceUtils.getFaceDetectorOptions(this)
-                        FaceDetectorProcessor(this, faceDetectorOptions)
+                        FaceDetectorProcessor(this, null)//, faceDetectorOptions)
                     }
 
-                    FACE_MESH_DETECTION -> FaceMeshDetectorProcessor(this)
-                    FACE_SAVE_IMAGE -> {
-                        Log.i(TAG, "Using Face Detector Processor")
-                        val faceDetectorOptions = PreferenceUtils.getFaceDetectorOptions(this)
-                        FaceDetectorProcessor(this, faceDetectorOptions)
-                    }
                     else -> throw IllegalStateException("Invalid model name")
                 }
             } catch (e: Exception) {
@@ -296,6 +318,13 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
                 }
                 try {
                     imageProcessor!!.processImageProxy(imageProxy, graphicOverlay)
+                    if (savedImage) {
+                        FileUtility.saveImage(
+                            BitmapUtils.getBitmap(imageProxy),
+                            imageProxy.imageInfo.timestamp.toString()
+                        )
+                        savedImage = false
+                    }
                 } catch (e: MlKitException) {
                     Log.e(TAG, "Failed to process image. Error: " + e.localizedMessage)
                     Toast.makeText(applicationContext, e.localizedMessage, Toast.LENGTH_SHORT)
@@ -309,9 +338,15 @@ class CameraXLivePreviewActivity : AppCompatActivity(), OnItemSelectedListener,
     companion object {
         private const val TAG = "CameraXLivePreview"
         private const val FACE_DETECTION = "Face Detection"
-        private const val FACE_MESH_DETECTION = "Face Mesh Detection (Beta)"
-        private const val FACE_SAVE_IMAGE = "Face Detect and Capture Image"
-
         private const val STATE_SELECTED_MODEL = "selected_model"
+        private const val PERMISSION_REQUESTS = 1
+
+        private val REQUIRED_RUNTIME_PERMISSIONS =
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+
     }
 }
